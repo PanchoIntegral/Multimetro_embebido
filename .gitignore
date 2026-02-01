@@ -1,0 +1,46 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/.Python
+backend/*.so
+backend/*.egg
+backend/*.egg-info/
+backend/dist/
+backend/build/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.cache/
+
+# Logs
+*.log
+backend.log
+frontend.log
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Process IDs
+.backend.pid
+.frontend.pid
+
+# Arduino
+arduino/*.hex
+arduino/*.elf
