@@ -14,13 +14,26 @@ class SerialReader:
         
     def connect(self):
         try:
+            # Cerrar conexión previa si existe
+            if self.serial_port and self.serial_port.is_open:
+                self.serial_port.close()
+                time.sleep(0.5)  # Esperar para liberar el puerto
+            
             self.serial_port = serial.Serial(
                 port=SERIAL_PORT,
                 baudrate=SERIAL_BAUDRATE,
-                timeout=SERIAL_TIMEOUT
+                timeout=SERIAL_TIMEOUT,
+                exclusive=True  # Acceso exclusivo al puerto
             )
+            time.sleep(2)  # Esperar para que Arduino se inicialice
             print(f"✓ Conectado a {SERIAL_PORT}")
             return True
+        except serial.SerialException as e:
+            if "PermissionError" in str(e):
+                print(f"✗ Error: Puerto {SERIAL_PORT} en uso. Cierra el Monitor Serial de Arduino.")
+            else:
+                print(f"✗ Error conectando serial: {e}")
+            return False
         except Exception as e:
             print(f"✗ Error conectando serial: {e}")
             return False
@@ -36,15 +49,41 @@ class SerialReader:
         return True
     
     def _read_loop(self):
+        error_count = 0
+        max_errors = 5
+        
         while self.is_running:
             try:
-                if self.serial_port.in_waiting:
+                if self.serial_port and self.serial_port.is_open and self.serial_port.in_waiting:
                     line = self.serial_port.readline().decode('utf-8').strip()
                     if line:
                         self._process_data(line)
+                        error_count = 0  # Reset error count on successful read
+                else:
+                    time.sleep(0.1)
+            except serial.SerialException as e:
+                error_count += 1
+                if error_count <= max_errors:
+                    print(f"Error leyendo serial ({error_count}/{max_errors}): {e}")
+                elif error_count == max_errors + 1:
+                    print("✗ Demasiados errores seriales. Intentando reconectar...")
+                    self._reconnect()
+                time.sleep(1)
             except Exception as e:
-                print(f"Error leyendo serial: {e}")
-                time.sleep(0.1)
+                error_count += 1
+                if error_count <= max_errors:
+                    print(f"Error inesperado ({error_count}/{max_errors}): {e}")
+                time.sleep(0.5)
+    
+    def _reconnect(self):
+        """Intenta reconectar al puerto serial"""
+        self.is_running = False
+        if self.serial_port:
+            self.serial_port.close()
+        time.sleep(2)
+        if self.connect():
+            self.is_running = True
+            print("✓ Reconectado exitosamente")
     
     def _process_data(self, line):
         try:

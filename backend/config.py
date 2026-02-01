@@ -1,5 +1,5 @@
 # Configuración del puerto serial
-SERIAL_PORT = '/dev/tty.usbmodem1101'  # macOS default - update with your Arduino port
+SERIAL_PORT = 'COM3'  # Windows - Arduino conectado en COM3
 # Para encontrar tu puerto en macOS: ls /dev/tty.*
 # Para Windows: COM3, COM4, etc.
 # Para Linux: /dev/ttyUSB0, /dev/ttyACM0, etc.
