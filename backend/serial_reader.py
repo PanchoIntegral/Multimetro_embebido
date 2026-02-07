@@ -87,32 +87,69 @@ class SerialReader:
     
     def _process_data(self, line):
         try:
-            # Formato esperado: "TYPE:value:uncertainty"
-            # Ejemplo: "VOLTAGE:12.45:0.50"
-            parts = line.split(':')
-            if len(parts) >= 3:
-                data = {
-                    'type': parts[0],
-                    'value': float(parts[1]),
-                    'uncertainty': float(parts[2]),
-                    'timestamp': time.time() * 1000,  # ms
-                    'unit': self._get_unit(parts[0])
-                }
-                
-                # Enviar datos puntuales
-                self.socketio.emit('measurement_data', data)
-                
-                # Actualizar buffer para osciloscopio
-                self.buffer.append(data)
-                if len(self.buffer) > 100:
-                    self.buffer.pop(0)
-                
-                self.socketio.emit('oscilloscope_data', {
-                    'buffer': self.buffer
-                })
-                
+            # Primero intentar parsear como JSON (formato del Arduino)
+            try:
+                json_data = json.loads(line)
+
+                # Verificar si es un mensaje de error
+                if 'error' in json_data:
+                    print(f"⚠️  Arduino error: {json_data.get('error')} - {json_data.get('received', '')}")
+                    return
+
+                # Verificar si es un mensaje de estado
+                if 'status' in json_data and 'type' not in json_data:
+                    print(f"ℹ️  Arduino status: {json_data}")
+                    return
+
+                # Procesar datos de medición
+                if json_data.get('type') == 'voltage':
+                    data = {
+                        'type': 'VOLTAGE',
+                        'value': float(json_data['value']),
+                        'uncertainty': 0.0,  # Arduino no envía uncertainty aún
+                        'timestamp': json_data.get('timestamp', time.time() * 1000),
+                        'unit': json_data.get('unit', 'V')
+                    }
+
+                    # Enviar datos puntuales
+                    self.socketio.emit('measurement_data', data)
+
+                    # Actualizar buffer para osciloscopio
+                    self.buffer.append(data)
+                    if len(self.buffer) > 100:
+                        self.buffer.pop(0)
+
+                    self.socketio.emit('oscilloscope_data', {
+                        'buffer': self.buffer
+                    })
+
+            except json.JSONDecodeError:
+                # Si no es JSON, intentar el formato antiguo "TYPE:value:uncertainty"
+                parts = line.split(':')
+                if len(parts) >= 3:
+                    data = {
+                        'type': parts[0],
+                        'value': float(parts[1]),
+                        'uncertainty': float(parts[2]),
+                        'timestamp': time.time() * 1000,
+                        'unit': self._get_unit(parts[0])
+                    }
+
+                    self.socketio.emit('measurement_data', data)
+
+                    self.buffer.append(data)
+                    if len(self.buffer) > 100:
+                        self.buffer.pop(0)
+
+                    self.socketio.emit('oscilloscope_data', {
+                        'buffer': self.buffer
+                    })
+                else:
+                    print(f"📝 Arduino dice: {line}")
+
         except Exception as e:
             print(f"Error procesando datos: {e}")
+            print(f"Línea recibida: {line}")
     
     def _get_unit(self, mtype):
         units = {
@@ -128,8 +165,25 @@ class SerialReader:
     def change_mode(self, mode):
         """Envía comando al Arduino para cambiar el modo de medición"""
         if self.serial_port and self.serial_port.is_open:
-            command = f"MODE:{mode}\n"
-            self.serial_port.write(command.encode('utf-8'))
+            # Primero detener el modo anterior si es necesario
+            if self.current_mode == 'VOLTAGE':
+                self.serial_port.write(b"STOP_VOLTAGE\n")
+                time.sleep(0.1)
+
+            # Mapear el modo al comando correcto del Arduino
+            command_map = {
+                'VOLTAGE': 'START_VOLTAGE',
+                'CURRENT': 'START_CURRENT',
+                'RESISTANCE': 'START_RESISTANCE',
+                'CAPACITANCE': 'START_CAPACITANCE',
+                'CONTINUITY': 'START_CONTINUITY',
+                'FREQUENCY': 'START_FREQUENCY'
+            }
+
+            command = command_map.get(mode, 'GET_STATUS')
+            self.serial_port.write(f"{command}\n".encode('utf-8'))
+            print(f"📡 Enviando comando: {command}")
+
             self.current_mode = mode
             self.buffer = []  # Limpiar buffer al cambiar modo
             return True
