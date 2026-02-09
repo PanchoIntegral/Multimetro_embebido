@@ -69,6 +69,24 @@ export default function MeterDisplay({ data, mode }) {
   const isContinuity = mode === 'CONTINUITY';
   const hasContinuity = isContinuity && data && data.value === 1;
 
+  // Determinar el valor a mostrar
+  const getDisplayValue = () => {
+    if (!data) return '---.--';
+
+    // Si hay un display_value especial (ej: "OL"), usarlo
+    if (data.display_value !== undefined && typeof data.display_value === 'string') {
+      return data.display_value;
+    }
+
+    // Si el valor es negativo (indicador de error), mostrar "OL"
+    if (data.value < 0) {
+      return 'OL';
+    }
+
+    // Valor numérico normal
+    return data.value.toFixed(2);
+  };
+
   return (
     <View style={styles.card}>
       <Text style={styles.modeLabel}>{getModeLabel(mode)}</Text>
@@ -80,12 +98,12 @@ export default function MeterDisplay({ data, mode }) {
           <>
             <View style={styles.valueRow}>
               <Text style={styles.value}>
-                {data ? data.value.toFixed(2) : '---.--'}
+                {getDisplayValue()}
               </Text>
               <Text style={styles.unit}>{getModeIcon(mode)}</Text>
             </View>
             <Text style={styles.unitLabel}>{data ? data.unit : ''}</Text>
-            {data && data.uncertainty != null && (
+            {data && data.uncertainty != null && data.value >= 0 && (
               <Text style={styles.uncertainty}>
                 Incertidumbre: ±{data.uncertainty.toFixed(2)} {data.unit}
               </Text>

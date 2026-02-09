@@ -102,26 +102,48 @@ class SerialReader:
                     return
 
                 # Procesar datos de medición
-                if json_data.get('type') == 'voltage':
+                measurement_type = json_data.get('type')
+
+                if measurement_type in ['voltage', 'resistance', 'current', 'capacitance']:
+                    # Mapear tipos a nombres en mayúsculas
+                    type_map = {
+                        'voltage': 'VOLTAGE',
+                        'resistance': 'RESISTANCE',
+                        'current': 'CURRENT',
+                        'capacitance': 'CAPACITANCE'
+                    }
+
+                    # Manejar valores especiales como "OL" (OverLoad)
+                    value = json_data['value']
+                    if isinstance(value, str):
+                        # Valor especial (ej: "OL" para circuito abierto)
+                        numeric_value = -1.0
+                        display_value = value
+                    else:
+                        numeric_value = float(value)
+                        display_value = numeric_value
+
                     data = {
-                        'type': 'VOLTAGE',
-                        'value': float(json_data['value']),
-                        'uncertainty': 0.0,  # Arduino no envía uncertainty aún
+                        'type': type_map.get(measurement_type, measurement_type.upper()),
+                        'value': numeric_value,
+                        'display_value': display_value,
+                        'uncertainty': 0.0,
                         'timestamp': json_data.get('timestamp', time.time() * 1000),
-                        'unit': json_data.get('unit', 'V')
+                        'unit': json_data.get('unit', '')
                     }
 
                     # Enviar datos puntuales
                     self.socketio.emit('measurement_data', data)
 
-                    # Actualizar buffer para osciloscopio
-                    self.buffer.append(data)
-                    if len(self.buffer) > 100:
-                        self.buffer.pop(0)
+                    # Actualizar buffer para osciloscopio (solo valores numéricos)
+                    if numeric_value >= 0:
+                        self.buffer.append(data)
+                        if len(self.buffer) > 100:
+                            self.buffer.pop(0)
 
-                    self.socketio.emit('oscilloscope_data', {
-                        'buffer': self.buffer
-                    })
+                        self.socketio.emit('oscilloscope_data', {
+                            'buffer': self.buffer
+                        })
 
             except json.JSONDecodeError:
                 # Si no es JSON, intentar el formato antiguo "TYPE:value:uncertainty"
@@ -165,10 +187,39 @@ class SerialReader:
     def change_mode(self, mode):
         """Envía comando al Arduino para cambiar el modo de medición"""
         if self.serial_port and self.serial_port.is_open:
-            # Primero detener el modo anterior si es necesario
-            if self.current_mode == 'VOLTAGE':
-                self.serial_port.write(b"STOP_VOLTAGE\n")
+            # Detener el modo anterior
+            stop_commands = {
+                'VOLTAGE': 'STOP_VOLTAGE',
+                'CURRENT': 'STOP_CURRENT',
+                'RESISTANCE': 'STOP_RESISTANCE',
+                'CAPACITANCE': 'STOP_CAPACITANCE',
+                'CONTINUITY': 'STOP_CONTINUITY',
+                'FREQUENCY': 'STOP_FREQUENCY'
+            }
+
+            if self.current_mode in stop_commands:
+                stop_cmd = stop_commands[self.current_mode]
+                self.serial_port.write(f"{stop_cmd}\n".encode('utf-8'))
+                print(f"🛑 Deteniendo modo anterior: {stop_cmd}")
                 time.sleep(0.1)
+
+            # Limpiar buffer y enviar señal de limpieza al frontend
+            self.buffer = []
+            self.socketio.emit('clear_measurement', {'mode': mode})
+            print(f"🧹 Buffer limpiado para modo: {mode}")
+
+            # Modos implementados actualmente en el Arduino
+            implemented_modes = ['VOLTAGE', 'RESISTANCE']
+
+            if mode not in implemented_modes:
+                # Modo no implementado aún
+                print(f"⚠️  Modo {mode} no implementado en Arduino aún")
+                self.socketio.emit('mode_not_implemented', {
+                    'mode': mode,
+                    'message': f'Modo {mode} en desarrollo. Solo VOLTAGE disponible.'
+                })
+                self.current_mode = mode  # Actualizar para la UI
+                return False
 
             # Mapear el modo al comando correcto del Arduino
             command_map = {
@@ -185,7 +236,6 @@ class SerialReader:
             print(f"📡 Enviando comando: {command}")
 
             self.current_mode = mode
-            self.buffer = []  # Limpiar buffer al cambiar modo
             return True
         return False
     

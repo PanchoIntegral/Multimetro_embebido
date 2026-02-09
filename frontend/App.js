@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import Dashboard from './src/components/Dashboard';
 import { colors } from './src/theme';
 
-const SOCKET_URL = 'http://10.21.38.30:5001';
+const SOCKET_URL = 'http://192.168.1.67:5001';
 
 export default function App() {
   const [socket, setSocket] = useState(null);
@@ -42,6 +42,19 @@ export default function App() {
       }
     });
 
+    // Limpiar datos cuando se cambia de modo
+    newSocket.on('clear_measurement', (data) => {
+      console.log('Limpiando mediciones para modo:', data.mode);
+      setCurrentData(null);
+      setOscilloscopeData([]);
+    });
+
+    // Mostrar advertencia cuando el modo no está implementado
+    newSocket.on('mode_not_implemented', (data) => {
+      console.warn('Modo no implementado:', data.mode, '-', data.message);
+      // Aquí podrías mostrar un toast o alerta al usuario
+    });
+
     setSocket(newSocket);
 
     return () => newSocket.close();
@@ -49,6 +62,10 @@ export default function App() {
 
   const handleModeChange = (mode) => {
     setCurrentMode(mode);
+    // Limpiar datos inmediatamente al cambiar de modo
+    setCurrentData(null);
+    setOscilloscopeData([]);
+
     if (socket && isConnected) {
       socket.emit('change_measurement_mode', { mode });
     }
