@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import Dashboard from './src/components/Dashboard';
 import { colors } from './src/theme';
 
-const SOCKET_URL = 'http://192.168.1.67:5001';
+const SOCKET_URL = 'http://10.21.5.17:5001';
 
 export default function App() {
   const [socket, setSocket] = useState(null);
